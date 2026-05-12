@@ -112,22 +112,21 @@ def add_video_urls_for_user(db: Session, current_user: User, urls: list[str]) ->
         if platform == "youtube":
             video_id = extract_video_id(url)
             if video_id:
-                details = get_video_details(video_id)
-                if not details:
-                    details = search_video_by_query(video_id)
-                if details:
-                    title = details["title"]
-                    thumbnail = details["thumbnail"]
-                    video_id = details["video_id"]
-                    canonical_url = f"https://www.youtube.com/watch?v={video_id}"
-            if not thumbnail:
-                thumbnail = f"https://img.youtube.com/vi/{extract_video_id(url) or 'default'}/hqdefault.jpg"
+                canonical_url = f"https://www.youtube.com/watch?v={video_id}"
+                thumbnail = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+                title = "YouTube Video"
+        elif platform == "instagram":
+            match = re.search(r"/(p|reel|tv)/([A-Za-z0-9_-]+)", url.strip(), flags=re.IGNORECASE)
+            if match:
+                post_type = match.group(1).lower()
+                shortcode = match.group(2)
+                canonical_url = f"https://www.instagram.com/{post_type}/{shortcode}/"
+            else:
+                canonical_url = url.split("?")[0]
+            title = "Instagram Post/Reel"
         else:
-            details = get_instagram_post_details(url) if platform == "instagram" else get_facebook_post_details(url)
-            if details:
-                title = details["title"]
-                thumbnail = details["thumbnail"]
-                canonical_url = details["url"]
+            canonical_url = url.split("?")[0]
+            title = "Facebook Video/Reel"
 
         if canonical_url in existing_urls and canonical_url != url:
             continue
@@ -279,6 +278,7 @@ def add_facebook_page_videos(
 @router.post("/track-views")
 def track_views(
     company_id: Optional[str] = Query(default=None),
+    video_ids: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -286,7 +286,12 @@ def track_views(
         raise HTTPException(status_code=403, detail="Only super admin can run sync")
     target_user = resolve_target_user(db, current_user, company_id)
 
-    videos = db.query(Video).filter(Video.user_id == target_user.id).all()
+    video_query = db.query(Video).filter(Video.user_id == target_user.id)
+    if video_ids:
+        selected_ids = [v.strip() for v in video_ids.split(",") if v.strip()]
+        if selected_ids:
+            video_query = video_query.filter(Video.id.in_(selected_ids))
+    videos = video_query.all()
     total_count = len(videos)
     tracked_count = 0
     skipped_count = 0

@@ -601,32 +601,80 @@ const SuperAdminLinkManager: React.FC<{
     setIsTracking(true);
     setTrackingMessage(urls.length === 0 ? 'SYNCING TRACKED CONTENT...' : 'ADDING LINKS...');
     try {
+      const mergeSyncResult = (base: any, incoming: any) => {
+        if (!incoming) return base;
+        base.tracked += Number(incoming.tracked ?? 0);
+        base.skipped += Number(incoming.skipped ?? 0);
+        base.total += Number(incoming.total ?? (Number(incoming.tracked ?? 0) + Number(incoming.skipped ?? 0)));
+        if (Array.isArray(incoming.warnings)) base.warnings.push(...incoming.warnings);
+        if (Array.isArray(incoming.errors)) base.errors.push(...incoming.errors);
+        return base;
+      };
+
       let syncResult: any = null;
+      const aggregateResult = {
+        tracked: 0,
+        skipped: 0,
+        total: 0,
+        warnings: [] as string[],
+        errors: [] as string[],
+      };
+
       if (urls.length === 0) {
         setTrackingMessage('SYNCING VIEW DATA...');
         syncResult = await api.trackViewsForCompany(selectedCompanyId);
-      } else if (platform === 'youtube' && inputMode === 'item') {
-        await api.addVideosForCompany(selectedCompanyId, urls);
-      } else if (platform === 'youtube' && inputMode === 'account') {
-        for (const channelUrl of urls) {
-          await api.addChannelVideosForCompany(selectedCompanyId, channelUrl, 50);
-        }
-      } else if (platform === 'instagram' && inputMode === 'item') {
-        await api.addVideosForCompany(selectedCompanyId, urls);
-      } else if (platform === 'facebook' && inputMode === 'item') {
-        await api.addVideosForCompany(selectedCompanyId, urls);
-      } else if (platform === 'facebook' && inputMode === 'account') {
-        for (const pageUrl of urls) {
-          await api.addFacebookPageVideosForCompany(selectedCompanyId, pageUrl, 50);
-        }
       } else {
-        for (const accountUrl of urls) {
-          await api.addInstagramAccountVideosForCompany(selectedCompanyId, accountUrl, 50);
+        const batchSize = inputMode === 'item' ? 8 : 1;
+        let processed = 0;
+
+        for (let i = 0; i < urls.length; i += batchSize) {
+          const batch = urls.slice(i, i + batchSize);
+          processed += batch.length;
+          try {
+            let addedVideos: any[] = [];
+            if (platform === 'youtube' && inputMode === 'item') {
+              setTrackingMessage(`ADDING LINKS (${processed}/${urls.length})...`);
+              addedVideos = await api.addVideosForCompany(selectedCompanyId, batch) as any[];
+            } else if (platform === 'instagram' && inputMode === 'item') {
+              setTrackingMessage(`ADDING LINKS (${processed}/${urls.length})...`);
+              addedVideos = await api.addVideosForCompany(selectedCompanyId, batch) as any[];
+            } else if (platform === 'facebook' && inputMode === 'item') {
+              setTrackingMessage(`ADDING LINKS (${processed}/${urls.length})...`);
+              addedVideos = await api.addVideosForCompany(selectedCompanyId, batch) as any[];
+            } else if (platform === 'youtube' && inputMode === 'account') {
+              const channelUrl = batch[0];
+              setTrackingMessage(`ADDING CHANNEL (${processed}/${urls.length})...`);
+              addedVideos = await api.addChannelVideosForCompany(selectedCompanyId, channelUrl, 50) as any[];
+            } else if (platform === 'facebook' && inputMode === 'account') {
+              const pageUrl = batch[0];
+              setTrackingMessage(`ADDING PAGE (${processed}/${urls.length})...`);
+              addedVideos = await api.addFacebookPageVideosForCompany(selectedCompanyId, pageUrl, 50) as any[];
+            } else {
+              const accountUrl = batch[0];
+              setTrackingMessage(`ADDING ACCOUNT (${processed}/${urls.length})...`);
+              addedVideos = await api.addInstagramAccountVideosForCompany(selectedCompanyId, accountUrl, 50) as any[];
+            }
+
+            const addedIds = (addedVideos || []).map((v: any) => v?.id).filter(Boolean);
+            if (addedIds.length > 0) {
+              setTrackingMessage(`SYNCING VIEW DATA (${processed}/${urls.length})...`);
+              const partialResult = await api.trackViewsForCompany(selectedCompanyId, addedIds);
+              mergeSyncResult(aggregateResult, partialResult);
+            }
+          } catch (batchErr: any) {
+            aggregateResult.errors.push(batchErr?.message || `Failed while processing batch ending at ${processed}`);
+          }
+        }
+
+        if (aggregateResult.total > 0) {
+          syncResult = aggregateResult;
+        } else {
+          setTrackingMessage('SYNCING TRACKED CONTENT...');
+          const fallbackResult = await api.trackViewsForCompany(selectedCompanyId);
+          syncResult = mergeSyncResult(aggregateResult, fallbackResult);
         }
       }
 
-      setTrackingMessage('SYNCING VIEW DATA...');
-      syncResult = await api.trackViewsForCompany(selectedCompanyId);
       await loadSelectedCompanyVideos(selectedCompanyId);
       onRefreshOverview();
       setUrls([]);

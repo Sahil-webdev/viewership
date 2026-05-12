@@ -186,12 +186,21 @@ class ApiService {
     });
   }
 
-  async trackViews() {
-    return this.request("/api/videos/track-views", { method: "POST" });
+  async trackViews(videoIds?: string[]) {
+    const query = videoIds && videoIds.length > 0
+      ? `?video_ids=${encodeURIComponent(videoIds.join(","))}`
+      : "";
+    return this.request(`/api/videos/track-views${query}`, { method: "POST" });
   }
 
-  async trackViewsForCompany(companyId: string) {
-    return this.request(`/api/videos/track-views?company_id=${encodeURIComponent(companyId)}`, { method: "POST" });
+  async trackViewsForCompany(companyId: string, videoIds?: string[]) {
+    const params = new URLSearchParams({
+      company_id: companyId,
+    });
+    if (videoIds && videoIds.length > 0) {
+      params.set("video_ids", videoIds.join(","));
+    }
+    return this.request(`/api/videos/track-views?${params.toString()}`, { method: "POST" });
   }
 
   async getMyVideos() {
