@@ -1,0 +1,126 @@
+@import "tailwindcss";
+
+:root {
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: #f4f7fc;
+  color: #0f172a;
+}
+
+/* Premium SaaS Styling */
+input, select, button {
+  font-family: inherit;
+}
+
+table {
+  font-feature-settings: "tnum";
+}
+
+/* Glassmorphism and Premium Effects */
+.glass {
+  background: rgba(255,255,255,0.03);
+  backdrop-filter: blur(20px);
+}
+
+/* Smooth Animations */
+.transition-all {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  transition-duration: 180ms;
+}
+
+/* Table hover polish */
+tr:hover {
+  background-color: #f8fafc;
+}
+
+/* Line Chart Hover */
+svg circle:hover {
+  r: 6;
+}
+
+/* Global Light Theme Remap */
+[class~="bg-[#0A0F1E]"],
+[class~="bg-[#0A0F1E]/95"] {
+  background-color: #f4f7fc !important;
+}
+
+[class~="bg-[#0F172A]"],
+[class~="bg-[#111827]"],
+[class~="bg-black/40"] {
+  background-color: #ffffff !important;
+}
+
+[class~="bg-white/[0.025]"],
+[class~="bg-white/[0.02]"],
+[class~="bg-white/[0.015]"],
+[class~="bg-white/[0.04]"],
+[class~="bg-white/[0.03]"] {
+  background-color: #ffffff !important;
+}
+
+[class~="bg-white/10"] {
+  background-color: #eef2ff !important;
+}
+
+[class~="bg-white/5"] {
+  background-color: #f8fafc !important;
+}
+
+[class~="hover:bg-white/5"]:hover,
+[class~="hover:bg-white/[0.02]"]:hover,
+[class~="hover:bg-white/[0.015]"]:hover {
+  background-color: #f1f5f9 !important;
+}
+
+[class~="border-white/10"],
+[class~="border-white/15"],
+[class~="border-white/20"] {
+  border-color: #dbe4f0 !important;
+}
+
+[class~="text-white"] {
+  color: #0f172a !important;
+}
+
+[class~="text-white/90"] {
+  color: #1e293b !important;
+}
+
+[class~="text-white/80"] {
+  color: #1e293b !important;
+}
+
+[class~="text-white/70"] {
+  color: #334155 !important;
+}
+
+[class~="text-white/60"] {
+  color: #475569 !important;
+}
+
+[class~="text-white/50"] {
+  color: #64748b !important;
+}
+
+[class~="text-white/40"] {
+  color: #94a3b8 !important;
+}
+
+[class~="text-white/30"] {
+  color: #94a3b8 !important;
+}
+
+/* Keep white text on primary/semantic buttons and badges */
+[class~="bg-[#FF0033]"][class~="text-white"],
+[class~="hover:bg-[#E6002E]"][class~="text-white"],
+[class~="hover:bg-[#CC0026]"][class~="text-white"],
+[class~="bg-emerald-600/90"][class~="text-white"],
+[class~="bg-red-600/90"][class~="text-white"],
+[class~="bg-blue-600/90"][class~="text-white"],
+[class~="bg-gradient-to-br"][class~="text-white"] {
+  color: #ffffff !important;
+}
