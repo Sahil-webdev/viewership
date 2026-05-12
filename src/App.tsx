@@ -601,9 +601,10 @@ const SuperAdminLinkManager: React.FC<{
     setIsTracking(true);
     setTrackingMessage(urls.length === 0 ? 'SYNCING TRACKED CONTENT...' : 'ADDING LINKS...');
     try {
+      let syncResult: any = null;
       if (urls.length === 0) {
         setTrackingMessage('SYNCING VIEW DATA...');
-        await api.trackViewsForCompany(selectedCompanyId);
+        syncResult = await api.trackViewsForCompany(selectedCompanyId);
       } else if (platform === 'youtube' && inputMode === 'item') {
         await api.addVideosForCompany(selectedCompanyId, urls);
       } else if (platform === 'youtube' && inputMode === 'account') {
@@ -625,16 +626,23 @@ const SuperAdminLinkManager: React.FC<{
       }
 
       setTrackingMessage('SYNCING VIEW DATA...');
-      await api.trackViewsForCompany(selectedCompanyId);
+      syncResult = await api.trackViewsForCompany(selectedCompanyId);
       await loadSelectedCompanyVideos(selectedCompanyId);
       onRefreshOverview();
       setUrls([]);
       setShowSuccess(true);
+      const tracked = Number(syncResult?.tracked ?? 0);
+      const skipped = Number(syncResult?.skipped ?? 0);
+      const total = Number(syncResult?.total ?? tracked + skipped);
+      const firstWarning = syncResult?.warnings?.[0] || syncResult?.errors?.[0];
+      const hasAccuracyWarning = skipped > 0 || Boolean(firstWarning);
       setToast({
-        message: urls.length === 0
-          ? `Tracked content synced for ${selectedCompany?.companyName || 'selected company'}`
-          : `Sync completed for ${selectedCompany?.companyName || 'selected company'}`,
-        type: 'success',
+        message: hasAccuracyWarning
+          ? `Sync completed: ${tracked}/${total} updated, ${skipped} skipped for accuracy. ${firstWarning ? `Note: ${firstWarning}` : ''}`
+          : (urls.length === 0
+            ? `Tracked content synced for ${selectedCompany?.companyName || 'selected company'}`
+            : `Sync completed for ${selectedCompany?.companyName || 'selected company'} (${tracked}/${total} updated)`),
+        type: hasAccuracyWarning ? 'info' : 'success',
       });
       setTimeout(() => setShowSuccess(false), 1400);
     } catch (err: any) {

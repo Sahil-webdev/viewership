@@ -287,8 +287,11 @@ def track_views(
     target_user = resolve_target_user(db, current_user, company_id)
 
     videos = db.query(Video).filter(Video.user_id == target_user.id).all()
+    total_count = len(videos)
     tracked_count = 0
+    skipped_count = 0
     errors = []
+    warnings = []
 
     for video in videos:
         platform = detect_platform(video.url)
@@ -298,16 +301,19 @@ def track_views(
             video_id = extract_video_id(video.url)
             if not video_id:
                 errors.append(f"Could not extract YouTube video ID from: {video.url}")
+                skipped_count += 1
                 continue
             details = get_video_details(video_id) or search_video_by_query(video_id)
         elif platform == "instagram":
             if not instagram_feature_available():
                 errors.append("Instagram dependency not installed. Skipping Instagram links.")
+                skipped_count += 1
                 continue
             details = get_instagram_post_details(video.url)
         elif platform == "facebook":
             if not facebook_feature_available():
                 errors.append("Facebook dependency not installed. Skipping Facebook links.")
+                skipped_count += 1
                 continue
             if is_facebook_page_url(video.url):
                 page_videos = get_facebook_page_video_urls(video.url, max_videos=1)
@@ -321,22 +327,12 @@ def track_views(
                 details = get_facebook_post_details(video.url)
         else:
             errors.append(f"Unsupported platform URL: {video.url}")
+            skipped_count += 1
             continue
 
         if not details:
-            if platform == "facebook":
-                last_record = db.query(ViewRecord).filter(
-                    ViewRecord.video_id == video.id
-                ).order_by(ViewRecord.date.desc()).first()
-                if last_record:
-                    fallback_views = int(last_record.views)
-                    upsert_today_view_record(db, video.id, fallback_views)
-                    tracked_count += 1
-                    errors.append(f"Facebook fetch incomplete for: {video.url}. Kept last known views.")
-                else:
-                    errors.append(f"Facebook fetch failed for: {video.url}. No previous view data available.")
-                continue
             errors.append(f"Failed to fetch data for video: {video.url}")
+            skipped_count += 1
             continue
 
         if video.title == "Unknown Video" or not video.thumbnail:
@@ -345,25 +341,39 @@ def track_views(
             db.commit()
 
         current_views = int(details.get("views", 0))
-        if platform == "facebook" and current_views <= 0:
+        if platform in {"instagram", "facebook"} and current_views <= 0:
             last_record = db.query(ViewRecord).filter(
                 ViewRecord.video_id == video.id
             ).order_by(ViewRecord.date.desc()).first()
             if last_record:
-                current_views = max(current_views, int(last_record.views))
+                warnings.append(
+                    f"Verified {platform.title()} views not available for: {video.url}. "
+                    f"Kept last verified value ({int(last_record.views)})."
+                )
             else:
-                errors.append(f"Facebook returned 0 views for: {video.url}. Skipped update due missing baseline.")
-                continue
+                warnings.append(
+                    f"Verified {platform.title()} views not available for: {video.url}. "
+                    "No baseline exists, so update skipped."
+                )
+            skipped_count += 1
+            continue
         upsert_today_view_record(db, video.id, current_views)
         tracked_count += 1
 
     db.commit()
 
-    result = {"message": f"View data synced for {tracked_count} videos", "tracked": tracked_count}
+    result = {
+        "message": f"View data synced for {tracked_count} of {total_count} videos",
+        "tracked": tracked_count,
+        "skipped": skipped_count,
+        "total": total_count,
+    }
     if any("instagram.com" in v.url.lower() for v in videos):
         result["instagram_note"] = instagram_data_accuracy_note()
     if any(("facebook.com" in v.url.lower() or "fb.watch" in v.url.lower()) for v in videos):
         result["facebook_note"] = facebook_data_accuracy_note()
+    if warnings:
+        result["warnings"] = warnings
     if errors:
         result["errors"] = errors
 
