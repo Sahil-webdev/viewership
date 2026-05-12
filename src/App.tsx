@@ -3,10 +3,10 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'r
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Users, TrendingUp, Video, Calendar, ArrowRight, Plus, Trash2, Edit2, 
-  Download, Search, X, Play, ExternalLink, Instagram, MoreHorizontal, Eye, Copy
+  Download, Search, X, Play, ExternalLink, Instagram, MoreHorizontal, Eye, EyeOff, Copy
 } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { api } from './services/api';
+import { api, API_BASE } from './services/api';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import OverviewCard from './components/OverviewCard';
@@ -20,8 +20,9 @@ const formatDate = (dateStr: string) => {
 
 // ==================== UNIFIED LOGIN ====================
 const SuperAdminLogin: React.FC = () => {
-  const [email, setEmail] = useState('adminharshita12@gmail.com');
-  const [password, setPassword] = useState('harshita@123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { loginUnified } = useAuth();
@@ -75,11 +76,24 @@ const SuperAdminLogin: React.FC = () => {
             </div>
             <div>
               <label className="text-xs text-white/50 tracking-widest block mb-2">PASSWORD</label>
-              <input 
-                type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-black/40 border border-white/15 focus:border-[#FF0033] px-4 py-3.5 rounded-2xl text-white placeholder:text-white/30 outline-none transition"
-                placeholder="••••••••" required
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-black/40 border border-white/15 focus:border-[#FF0033] px-4 py-3.5 pr-12 rounded-2xl text-white placeholder:text-white/30 outline-none transition"
+                  placeholder="********"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
 
             {error && <div className="text-red-400 text-sm bg-red-950/60 px-4 py-3 rounded-xl">{error}</div>}
@@ -93,7 +107,7 @@ const SuperAdminLogin: React.FC = () => {
           </form>
 
           <div className="mt-6 pt-6 border-t border-white/10 text-center">
-            <div className="mt-4 text-[10px] text-white/30">Demo: adminharshita12@gmail.com / harshita@123</div>
+            <div className="mt-4 text-[10px] text-white/30">Use your assigned credentials</div>
           </div>
         </div>
       </div>
@@ -1546,9 +1560,9 @@ const CompanyReports: React.FC = () => {
     }
 
     const endpoints: Record<string, string> = {
-      CSV: `http://localhost:8000/api/analytics/export/csv?days=${days}`,
-      Excel: `http://localhost:8000/api/analytics/export/excel?days=${days}`,
-      PDF: `http://localhost:8000/api/analytics/export/pdf?days=${days}`,
+      CSV: `${API_BASE}/api/analytics/export/csv?days=${days}`,
+      Excel: `${API_BASE}/api/analytics/export/excel?days=${days}`,
+      PDF: `${API_BASE}/api/analytics/export/pdf?days=${days}`,
     };
 
     const endpoint = endpoints[type];
@@ -2162,4 +2176,8 @@ function App() {
 }
 
 export default App;
+
+
+
+
 
