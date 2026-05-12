@@ -1566,7 +1566,7 @@ const CompanyReports: React.FC = () => {
     };
 
     const endpoint = endpoints[type];
-    if (!endpoint) return;
+    if (!endpoint) return;  
 
     try {
       setExporting(type);
