@@ -7,6 +7,7 @@ interface AuthContextType {
   isSuperAdmin: boolean;
   companies: User[];
   setCompanies: React.Dispatch<React.SetStateAction<User[]>>;
+  loginUnified: (email: string, password: string) => Promise<{ ok: boolean; isSuperAdmin?: boolean }>;
   loginSuperAdmin: (email: string, password: string) => Promise<boolean>;
   loginCompany: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
@@ -78,28 +79,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const loginSuperAdmin = async (email: string, password: string): Promise<boolean> => {
-    try {
-      await api.login({ email, password });
-      const me = await api.getMe();
-      if (!me.is_super_admin) return false;
-      setUser(mapUser(me));
-      await loadCompanies();
-      return true;
-    } catch {
-      return false;
-    }
+    const result = await loginUnified(email, password);
+    return result.ok && result.isSuperAdmin === true;
   };
 
   const loginCompany = async (email: string, password: string): Promise<boolean> => {
+    const result = await loginUnified(email, password);
+    return result.ok && result.isSuperAdmin === false;
+  };
+
+  const loginUnified = async (email: string, password: string): Promise<{ ok: boolean; isSuperAdmin?: boolean }> => {
     try {
       await api.login({ email, password });
       const me = await api.getMe();
-      if (me.is_super_admin) return false;
       setUser(mapUser(me));
+      if (me.is_super_admin) {
+        setVideos([]);
+        await loadCompanies();
+        return { ok: true, isSuperAdmin: true };
+      }
+      setCompanies([]);
       await loadCompanyData();
-      return true;
+      return { ok: true, isSuperAdmin: false };
     } catch {
-      return false;
+      return { ok: false };
     }
   };
 
@@ -193,7 +196,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   return (
     <AuthContext.Provider value={{
       user, isSuperAdmin, companies, setCompanies,
-      loginSuperAdmin, loginCompany, logout,
+      loginUnified, loginSuperAdmin, loginCompany, logout,
       createCompanyAccess, updateCompany, deleteCompany,
       addVideosForCompany, addChannelForCompany, addInstagramAccountForCompany, clearAllCompanyVideos, trackViews, getCurrentCompanyVideos, videos, setVideos,
       updateViewHistory, exportToCSV, isLoading,

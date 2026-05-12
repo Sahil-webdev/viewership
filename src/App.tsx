@@ -18,24 +18,24 @@ const formatDate = (dateStr: string) => {
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
-// ==================== SUPER ADMIN LOGIN ====================
+// ==================== UNIFIED LOGIN ====================
 const SuperAdminLogin: React.FC = () => {
-  const [email, setEmail] = useState('admin@viewpulse.com');
-  const [password, setPassword] = useState('V!ewPulse#2024Admin');
+  const [email, setEmail] = useState('adminharshita12@gmail.com');
+  const [password, setPassword] = useState('harshita@123');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { loginSuperAdmin } = useAuth();
+  const { loginUnified } = useAuth();
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
-    const success = await loginSuperAdmin(email, password);
-    if (success) {
-      navigate('/super-admin/dashboard');
+    const result = await loginUnified(email, password);
+    if (result.ok) {
+      navigate(result.isSuperAdmin ? '/super-admin/dashboard' : '/company/dashboard');
     } else {
-      setError('Invalid credentials. Use the demo credentials provided.');
+      setError('Invalid email or password. Please check your credentials.');
     }
     setIsLoading(false);
   };
@@ -60,17 +60,17 @@ const SuperAdminLogin: React.FC = () => {
         <div className="bg-white/[0.025] backdrop-blur-3xl border border-white/10 rounded-3xl p-7 shadow-2xl">
           <div className="mb-6">
             <div className="uppercase text-xs tracking-[3px] text-[#FF0033] font-medium mb-2">SECURE ACCESS</div>
-            <h1 className="text-3xl font-semibold tracking-[-1.4px] text-white">Super Admin Portal</h1>
-            <p className="text-white/60 mt-2 text-sm">Manage company access and global analytics</p>
+            <h1 className="text-3xl font-semibold tracking-[-1.4px] text-white">ViewPulse Portal</h1>
+            <p className="text-white/60 mt-2 text-sm">Login once. We will open Super Admin or Company dashboard automatically.</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="text-xs text-white/50 tracking-widest block mb-2">ADMIN EMAIL</label>
+              <label className="text-xs text-white/50 tracking-widest block mb-2">EMAIL</label>
               <input 
                 type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-black/40 border border-white/15 focus:border-[#FF0033] px-4 py-3.5 rounded-2xl text-white placeholder:text-white/30 outline-none transition"
-                placeholder="admin@viewpulse.com" required
+                placeholder="you@company.com" required
               />
             </div>
             <div>
@@ -93,14 +93,8 @@ const SuperAdminLogin: React.FC = () => {
           </form>
 
           <div className="mt-6 pt-6 border-t border-white/10 text-center">
-            <div className="mt-4 text-[10px] text-white/30">Demo: admin@viewpulse.com / V!ewPulse#2024Admin</div>
+            <div className="mt-4 text-[10px] text-white/30">Demo: adminharshita12@gmail.com / harshita@123</div>
           </div>
-        </div>
-        
-        <div className="mt-6 flex justify-center">
-          <button onClick={() => navigate('/company/login')} className="text-xs text-white/40 hover:text-white flex items-center gap-2 transition">
-            Switch to Company Login <ArrowRight className="w-3 h-3" />
-          </button>
         </div>
       </div>
     </div>
@@ -2155,7 +2149,7 @@ function App() {
           <Route path="/super-admin/reports" element={<ProtectedRoute requireSuper><SuperAdminReports /></ProtectedRoute>} />
           <Route path="/super-admin/settings" element={<ProtectedRoute requireSuper><SettingsPage /></ProtectedRoute>} />
           
-          <Route path="/company/login" element={<CompanyLogin />} />
+          <Route path="/company/login" element={<SuperAdminLogin />} />
           <Route path="/company/dashboard" element={<ProtectedRoute><CompanyReadonlyDashboard /></ProtectedRoute>} />
           <Route path="/company/reports" element={<ProtectedRoute><CompanyReports /></ProtectedRoute>} />
           <Route path="/company/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
