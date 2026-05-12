@@ -22,11 +22,25 @@ const formatDate = (dateStr: string) => {
 const SuperAdminLogin: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [allowTyping, setAllowTyping] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { loginUnified } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Keep login fields empty even if browser tries to auto-fill.
+    setAllowTyping(false);
+    setEmail('');
+    setPassword('');
+    const t = window.setTimeout(() => {
+      setAllowTyping(false);
+      setEmail('');
+      setPassword('');
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,11 +79,43 @@ const SuperAdminLogin: React.FC = () => {
             <p className="text-white/60 mt-2 text-sm">Login once. We will open Super Admin or Company dashboard automatically.</p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form
+            onSubmit={handleLogin}
+            className="space-y-4"
+            autoComplete="off"
+            onFocusCapture={() => setAllowTyping(true)}
+            data-lpignore="true"
+          >
+            <input
+              type="text"
+              name="fake-username"
+              autoComplete="username"
+              className="absolute left-[-9999px] top-auto h-px w-px opacity-0 pointer-events-none"
+              tabIndex={-1}
+              aria-hidden="true"
+            />
+            <input
+              type="password"
+              name="fake-password"
+              autoComplete="current-password"
+              className="absolute left-[-9999px] top-auto h-px w-px opacity-0 pointer-events-none"
+              tabIndex={-1}
+              aria-hidden="true"
+            />
             <div>
               <label className="text-xs text-white/50 tracking-widest block mb-2">EMAIL</label>
               <input 
-                type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                type="text"
+                inputMode="email"
+                name="vp_portal_contact"
+                autoComplete="new-password"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                readOnly={!allowTyping}
+                spellCheck={false}
+                autoCapitalize="none"
+                autoCorrect="off"
+                data-lpignore="true"
                 className="w-full bg-black/40 border border-white/15 focus:border-[#FF0033] px-4 py-3.5 rounded-2xl text-white placeholder:text-white/30 outline-none transition"
                 placeholder="you@company.com" required
               />
@@ -79,8 +125,12 @@ const SuperAdminLogin: React.FC = () => {
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
+                  name="vp_portal_key"
+                  autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  readOnly={!allowTyping}
+                  data-lpignore="true"
                   className="w-full bg-black/40 border border-white/15 focus:border-[#FF0033] px-4 py-3.5 pr-12 rounded-2xl text-white placeholder:text-white/30 outline-none transition"
                   placeholder="********"
                   required
