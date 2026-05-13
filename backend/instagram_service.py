@@ -3,6 +3,8 @@ import os
 import time
 from urllib.parse import urlparse
 
+import meta_service
+
 try:
     import instaloader
 except Exception:
@@ -13,56 +15,37 @@ _LOGIN_ATTEMPTED = False
 
 
 def instagram_feature_available() -> bool:
-    return instaloader is not None
+    return meta_service.is_configured() or instaloader is not None
+
+
+def meta_available() -> bool:
+    return meta_service.is_configured()
 
 
 def is_instagram_url(url: str) -> bool:
-    return bool(re.search(r"(?:^|\.)(instagram\.com)$", urlparse(url.strip()).netloc.lower()))
+    return meta_service.is_instagram_url(url)
 
 
 def is_instagram_post_url(url: str) -> bool:
-    path = urlparse(url.strip()).path.lower()
-    return "/p/" in path or "/reel/" in path or "/tv/" in path
+    return meta_service.is_instagram_post_url(url)
 
 
 def is_instagram_account_url(url: str) -> bool:
-    parsed = urlparse(url.strip())
-    host = parsed.netloc.lower()
-    if "instagram.com" not in host:
-        return False
-    parts = [p for p in parsed.path.split("/") if p]
-    if len(parts) != 1:
-        return False
-    username = parts[0]
-    blocked = {"p", "reel", "tv", "explore", "accounts", "stories"}
-    return username.lower() not in blocked
+    return meta_service.is_instagram_account_url(url)
 
 
 def extract_instagram_shortcode(url: str) -> str | None:
-    parsed = urlparse(url.strip())
-    parts = [p for p in parsed.path.split("/") if p]
-    if len(parts) < 2:
-        return None
-    if parts[0].lower() in {"p", "reel", "tv"}:
-        return parts[1]
-    return None
+    return meta_service.extract_instagram_shortcode(url)
 
 
 def extract_instagram_username(url: str) -> str | None:
-    parsed = urlparse(url.strip())
-    parts = [p for p in parsed.path.split("/") if p]
-    if len(parts) != 1:
-        return None
-    username = parts[0].strip()
-    if not username:
-        return None
-    return username
+    return meta_service.extract_instagram_username(url)
 
 
 def _loader():
     global _CACHED_LOADER, _LOGIN_ATTEMPTED
     if instaloader is None:
-        return None  # type: ignore[return-value]
+        return None
     if _CACHED_LOADER is not None:
         return _CACHED_LOADER
 
@@ -86,7 +69,7 @@ def _loader():
     return loader
 
 
-def get_instagram_post_details(url: str) -> dict | None:
+def _instaloader_post_details(url: str) -> dict | None:
     if instaloader is None:
         return None
     shortcode = extract_instagram_shortcode(url)
@@ -95,7 +78,6 @@ def get_instagram_post_details(url: str) -> dict | None:
 
     delay = float(os.getenv("INSTAGRAM_FETCH_DELAY_SECONDS", "2.0") or "2.0")
     retries = max(1, int(os.getenv("INSTAGRAM_FETCH_RETRIES", "3") or "3"))
-    last_error = None
 
     for attempt in range(1, retries + 1):
         try:
@@ -105,7 +87,6 @@ def get_instagram_post_details(url: str) -> dict | None:
             post = instaloader.Post.from_shortcode(loader.context, shortcode)
             break
         except Exception as exc:
-            last_error = exc
             if attempt >= retries:
                 return None
             time.sleep(delay * attempt if delay > 0 else attempt)
@@ -116,7 +97,6 @@ def get_instagram_post_details(url: str) -> dict | None:
     title = caption[:90] if caption else f"Instagram post by @{post.owner_username}"
     metric_views = 0
     if post.is_video:
-        # Reels UI usually shows play_count, while view_count can be lower.
         play_count = getattr(post, "video_play_count", None)
         view_count = post.video_view_count
         candidates = [v for v in [play_count, view_count] if isinstance(v, int)]
@@ -140,7 +120,21 @@ def get_instagram_post_details(url: str) -> dict | None:
     }
 
 
+def get_instagram_post_details(url: str) -> dict | None:
+    if meta_service.is_configured():
+        result = meta_service.get_instagram_post_details(url)
+        if result:
+            return result
+
+    if instaloader is not None:
+        return _instaloader_post_details(url)
+
+    return None
+
+
 def instagram_data_accuracy_note() -> str:
+    if meta_service.is_configured():
+        return meta_service.meta_data_accuracy_note()
     return (
         "Instagram counts can vary by source. We use max(play_count, view_count) when available; "
         "for best accuracy set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD on server."
@@ -148,6 +142,11 @@ def instagram_data_accuracy_note() -> str:
 
 
 def get_instagram_account_video_urls(account_url: str, max_videos: int = 30) -> list[str]:
+    if meta_service.is_configured():
+        result = meta_service.get_instagram_account_video_urls(account_url, max_videos)
+        if result:
+            return result
+
     if instaloader is None:
         return []
     username = extract_instagram_username(account_url)

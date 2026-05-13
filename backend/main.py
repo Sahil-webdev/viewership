@@ -6,6 +6,8 @@ from database import engine, Base
 from routes.auth import router as auth_router
 from routes.videos import router as videos_router
 from routes.analytics import router as analytics_router
+from meta_service import configure as meta_configure
+from meta_service import configure_facebook as meta_configure_facebook
 
 Base.metadata.create_all(bind=engine)
 
@@ -19,6 +21,24 @@ def ensure_runtime_schema():
 
 
 ensure_runtime_schema()
+
+meta_app_id = os.getenv("META_APP_ID", "").strip()
+meta_app_secret = os.getenv("META_APP_SECRET", "").strip()
+meta_access_token = os.getenv("META_ACCESS_TOKEN", "").strip()
+meta_business_id = os.getenv("INSTAGRAM_BUSINESS_ID", "").strip()
+if meta_app_id and meta_app_secret and meta_access_token and meta_business_id:
+    meta_configure(meta_app_id, meta_app_secret, meta_access_token, meta_business_id)
+    print("[Meta] Instagram Graph API configured successfully")
+else:
+    print("[Meta] Instagram Graph API not configured (missing env vars)")
+
+fb_page_id = os.getenv("FACEBOOK_PAGE_ID", "").strip()
+fb_page_token = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN", "").strip()
+if fb_page_id and fb_page_token:
+    meta_configure_facebook(fb_page_id, fb_page_token)
+    print("[Meta] Facebook Graph API configured successfully")
+else:
+    print("[Meta] Facebook Graph API not configured (missing env vars)")
 
 app = FastAPI(
     title="ViewPulse API",

@@ -13,6 +13,7 @@ from youtube_service import (
 )
 from instagram_service import (
     instagram_feature_available,
+    meta_available,
     instagram_data_accuracy_note,
     is_instagram_url,
     is_instagram_post_url,
@@ -91,7 +92,7 @@ def add_video_urls_for_user(db: Session, current_user: User, urls: list[str]) ->
         if platform == "instagram" and not instagram_feature_available():
             raise HTTPException(
                 status_code=503,
-                detail="Instagram tracking dependency is not installed on server. Please install requirements and restart backend.",
+                detail="Instagram tracking is not configured. Please set Meta API credentials (META_APP_ID, META_APP_SECRET, META_ACCESS_TOKEN, INSTAGRAM_BUSINESS_ID) in .env or install instaloader.",
             )
         if platform == "facebook" and not (is_facebook_url(url) and is_facebook_post_url(url)):
             continue
@@ -238,7 +239,7 @@ def add_instagram_account_videos(
     if not instagram_feature_available():
         raise HTTPException(
             status_code=503,
-            detail="Instagram tracking dependency is not installed on server. Please install requirements and restart backend.",
+            detail="Instagram tracking is not configured. Please set Meta API credentials in .env or install instaloader.",
         )
     if not is_instagram_account_url(payload.channel_url):
         raise HTTPException(status_code=400, detail="Invalid Instagram account URL")
@@ -311,7 +312,7 @@ def track_views(
             details = get_video_details(video_id) or search_video_by_query(video_id)
         elif platform == "instagram":
             if not instagram_feature_available():
-                errors.append("Instagram dependency not installed. Skipping Instagram links.")
+                errors.append("Instagram tracking not configured (missing Meta API credentials or instaloader).")
                 skipped_count += 1
                 continue
             details = get_instagram_post_details(video.url)
@@ -374,9 +375,15 @@ def track_views(
         "total": total_count,
     }
     if any("instagram.com" in v.url.lower() for v in videos):
-        result["instagram_note"] = instagram_data_accuracy_note()
+        if meta_available():
+            result["instagram_note"] = "View counts from Meta Graph API (Business Discovery - real view counts)."
+        else:
+            result["instagram_note"] = instagram_data_accuracy_note()
     if any(("facebook.com" in v.url.lower() or "fb.watch" in v.url.lower()) for v in videos):
-        result["facebook_note"] = facebook_data_accuracy_note()
+        if meta_available():
+            result["facebook_note"] = "Facebook view counts from Meta Graph API + fallback methods."
+        else:
+            result["facebook_note"] = facebook_data_accuracy_note()
     if warnings:
         result["warnings"] = warnings
     if errors:
@@ -395,18 +402,37 @@ def refresh_video_views(
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
 
-    yt_id = extract_video_id(video.url)
-    if not yt_id:
-        raise HTTPException(status_code=400, detail="Invalid YouTube URL")
+    platform = detect_platform(video.url)
+    details = None
+    views = 0
+    title = video.title
 
-    details = get_video_details(yt_id)
-    if not details:
-        raise HTTPException(status_code=500, detail="Failed to fetch video data from YouTube")
+    if platform == "youtube":
+        yt_id = extract_video_id(video.url)
+        if not yt_id:
+            raise HTTPException(status_code=400, detail="Invalid YouTube URL")
+        details = get_video_details(yt_id)
+        if not details:
+            raise HTTPException(status_code=500, detail="Failed to fetch video data from YouTube")
+        views = details["views"]
+        title = details.get("title", video.title)
+    elif platform == "instagram":
+        if not instagram_feature_available():
+            raise HTTPException(status_code=503, detail="Instagram tracking not configured")
+        details = get_instagram_post_details(video.url)
+        if not details:
+            raise HTTPException(status_code=500, detail="Failed to fetch Instagram data")
+        views = details["views"]
+        title = details.get("title", video.title)
+    else:
+        raise HTTPException(status_code=400, detail="Refresh not supported for this platform")
 
-    upsert_today_view_record(db, video.id, details["views"])
-
+    upsert_today_view_record(db, video.id, views)
+    video.title = title
+    video.thumbnail = details.get("thumbnail", video.thumbnail)
     db.commit()
-    return {"views": details["views"], "title": details["title"], "message": "Views refreshed"}
+
+    return {"views": views, "title": title, "message": "Views refreshed"}
 
 
 @router.get("/my-videos", response_model=list[VideoResponse])

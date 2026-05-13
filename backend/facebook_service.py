@@ -10,12 +10,16 @@ try:
 except Exception:
     yt_dlp = None
 
+import meta_service
+
 
 def facebook_feature_available() -> bool:
     return True
 
 
 def facebook_data_accuracy_note() -> str:
+    if meta_service.is_configured():
+        return "View counts from Meta Graph API."
     return (
         "For exact Facebook views, configure FACEBOOK_PAGE_ACCESS_TOKEN (Graph API). "
         "Without it, fallback scraping can be approximate and vary by region/login state."
@@ -288,6 +292,13 @@ def _ytdlp_post_details(url: str) -> dict | None:
 def get_facebook_post_details(url: str) -> dict | None:
     if not is_facebook_post_url(url):
         return None
+
+    # Try Meta Graph API first
+    if meta_service.is_configured():
+        meta_details = meta_service.get_facebook_post_details(url)
+        if meta_details and int(meta_details.get("views", 0)) > 0:
+            return meta_details
+
     resolved = _resolve_redirect_target(url)
     candidates = [url]
     if resolved not in candidates:
@@ -367,6 +378,13 @@ def get_facebook_post_details(url: str) -> dict | None:
 def get_facebook_page_video_urls(page_url: str, max_videos: int = 30) -> list[str]:
     if not is_facebook_page_url(page_url):
         return []
+
+    # Try Meta Graph API first
+    if meta_service.is_configured():
+        meta_urls = meta_service.get_facebook_page_video_urls(page_url, max_videos)
+        if meta_urls:
+            return meta_urls
+
     page_url = _resolve_redirect_target(page_url)
     max_videos = max(1, min(max_videos, 100))
     try:
