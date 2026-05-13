@@ -601,6 +601,28 @@ const SuperAdminLinkManager: React.FC<{
     setIsTracking(true);
     setTrackingMessage(urls.length === 0 ? 'SYNCING TRACKED CONTENT...' : 'ADDING LINKS...');
     try {
+      const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+      const withRetry = async <T,>(task: () => Promise<T>, retries: number = 3): Promise<T> => {
+        let lastError: any = null;
+        for (let attempt = 1; attempt <= retries; attempt++) {
+          try {
+            return await task();
+          } catch (err: any) {
+            lastError = err;
+            const msg = String(err?.message || '').toLowerCase();
+            const retryable =
+              msg.includes('timeout') ||
+              msg.includes('gateway') ||
+              msg.includes('network') ||
+              msg.includes('request failed') ||
+              msg.includes('failed to fetch');
+            if (!retryable || attempt === retries) break;
+            await sleep(900 * attempt);
+          }
+        }
+        throw lastError;
+      };
+
       const mergeSyncResult = (base: any, incoming: any) => {
         if (!incoming) return base;
         base.tracked += Number(incoming.tracked ?? 0);
@@ -621,10 +643,22 @@ const SuperAdminLinkManager: React.FC<{
       };
 
       if (urls.length === 0) {
-        setTrackingMessage('SYNCING VIEW DATA...');
-        syncResult = await api.trackViewsForCompany(selectedCompanyId);
+        const ids = managedVideos.map((v) => v.id).filter(Boolean);
+        for (let i = 0; i < ids.length; i++) {
+          const id = ids[i];
+          setTrackingMessage(`SYNCING VIEW DATA (${i + 1}/${ids.length})...`);
+          try {
+            const partial = await withRetry(() => api.trackViewsForCompany(selectedCompanyId, [id]));
+            mergeSyncResult(aggregateResult, partial);
+          } catch (err: any) {
+            aggregateResult.errors.push(err?.message || `Failed to sync item ${i + 1}/${ids.length}`);
+            aggregateResult.total += 1;
+            aggregateResult.skipped += 1;
+          }
+        }
+        syncResult = aggregateResult;
       } else {
-        const batchSize = inputMode === 'item' ? 8 : 1;
+        const batchSize = 1;
         let processed = 0;
 
         for (let i = 0; i < urls.length; i += batchSize) {
@@ -634,45 +668,50 @@ const SuperAdminLinkManager: React.FC<{
             let addedVideos: any[] = [];
             if (platform === 'youtube' && inputMode === 'item') {
               setTrackingMessage(`ADDING LINKS (${processed}/${urls.length})...`);
-              addedVideos = await api.addVideosForCompany(selectedCompanyId, batch) as any[];
+              addedVideos = await withRetry(() => api.addVideosForCompany(selectedCompanyId, batch)) as any[];
             } else if (platform === 'instagram' && inputMode === 'item') {
               setTrackingMessage(`ADDING LINKS (${processed}/${urls.length})...`);
-              addedVideos = await api.addVideosForCompany(selectedCompanyId, batch) as any[];
+              addedVideos = await withRetry(() => api.addVideosForCompany(selectedCompanyId, batch)) as any[];
             } else if (platform === 'facebook' && inputMode === 'item') {
               setTrackingMessage(`ADDING LINKS (${processed}/${urls.length})...`);
-              addedVideos = await api.addVideosForCompany(selectedCompanyId, batch) as any[];
+              addedVideos = await withRetry(() => api.addVideosForCompany(selectedCompanyId, batch)) as any[];
             } else if (platform === 'youtube' && inputMode === 'account') {
               const channelUrl = batch[0];
               setTrackingMessage(`ADDING CHANNEL (${processed}/${urls.length})...`);
-              addedVideos = await api.addChannelVideosForCompany(selectedCompanyId, channelUrl, 50) as any[];
+              addedVideos = await withRetry(() => api.addChannelVideosForCompany(selectedCompanyId, channelUrl, 50)) as any[];
             } else if (platform === 'facebook' && inputMode === 'account') {
               const pageUrl = batch[0];
               setTrackingMessage(`ADDING PAGE (${processed}/${urls.length})...`);
-              addedVideos = await api.addFacebookPageVideosForCompany(selectedCompanyId, pageUrl, 50) as any[];
+              addedVideos = await withRetry(() => api.addFacebookPageVideosForCompany(selectedCompanyId, pageUrl, 50)) as any[];
             } else {
               const accountUrl = batch[0];
               setTrackingMessage(`ADDING ACCOUNT (${processed}/${urls.length})...`);
-              addedVideos = await api.addInstagramAccountVideosForCompany(selectedCompanyId, accountUrl, 50) as any[];
+              addedVideos = await withRetry(() => api.addInstagramAccountVideosForCompany(selectedCompanyId, accountUrl, 50)) as any[];
             }
 
             const addedIds = (addedVideos || []).map((v: any) => v?.id).filter(Boolean);
             if (addedIds.length > 0) {
-              setTrackingMessage(`SYNCING VIEW DATA (${processed}/${urls.length})...`);
-              const partialResult = await api.trackViewsForCompany(selectedCompanyId, addedIds);
-              mergeSyncResult(aggregateResult, partialResult);
+              for (let j = 0; j < addedIds.length; j++) {
+                const videoId = addedIds[j];
+                setTrackingMessage(`SYNCING VIEW DATA (${processed}/${urls.length})...`);
+                try {
+                  const partialResult = await withRetry(() => api.trackViewsForCompany(selectedCompanyId, [videoId]));
+                  mergeSyncResult(aggregateResult, partialResult);
+                } catch (syncErr: any) {
+                  aggregateResult.errors.push(syncErr?.message || `Failed syncing newly added item (${processed}/${urls.length})`);
+                  aggregateResult.total += 1;
+                  aggregateResult.skipped += 1;
+                }
+              }
             }
           } catch (batchErr: any) {
             aggregateResult.errors.push(batchErr?.message || `Failed while processing batch ending at ${processed}`);
+            aggregateResult.total += batch.length;
+            aggregateResult.skipped += batch.length;
           }
         }
 
-        if (aggregateResult.total > 0) {
-          syncResult = aggregateResult;
-        } else {
-          setTrackingMessage('SYNCING TRACKED CONTENT...');
-          const fallbackResult = await api.trackViewsForCompany(selectedCompanyId);
-          syncResult = mergeSyncResult(aggregateResult, fallbackResult);
-        }
+        syncResult = aggregateResult;
       }
 
       await loadSelectedCompanyVideos(selectedCompanyId);
@@ -685,12 +724,14 @@ const SuperAdminLinkManager: React.FC<{
       const firstWarning = syncResult?.warnings?.[0] || syncResult?.errors?.[0];
       const hasAccuracyWarning = skipped > 0 || Boolean(firstWarning);
       setToast({
-        message: hasAccuracyWarning
+        message: total === 0
+          ? 'No new trackable items were processed. Check links or try again.'
+          : hasAccuracyWarning
           ? `Sync completed: ${tracked}/${total} updated, ${skipped} skipped for accuracy. ${firstWarning ? `Note: ${firstWarning}` : ''}`
           : (urls.length === 0
             ? `Tracked content synced for ${selectedCompany?.companyName || 'selected company'}`
             : `Sync completed for ${selectedCompany?.companyName || 'selected company'} (${tracked}/${total} updated)`),
-        type: hasAccuracyWarning ? 'info' : 'success',
+        type: total === 0 ? 'info' : (hasAccuracyWarning ? 'info' : 'success'),
       });
       setTimeout(() => setShowSuccess(false), 1400);
     } catch (err: any) {
