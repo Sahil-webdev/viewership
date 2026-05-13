@@ -29,6 +29,25 @@ def _safe_date(date_str: str):
         return None
 
 
+def _platform_label(url: str) -> str:
+    url_l = (url or "").lower()
+    if "instagram.com" in url_l:
+        return "Instagram"
+    if "facebook.com" in url_l or "fb.watch" in url_l:
+        return "Facebook"
+    if "youtube.com" in url_l or "youtu.be" in url_l:
+        return "YouTube"
+    return "Social"
+
+
+def _record_status(record: ViewRecord | None) -> str:
+    if record is None:
+        return "Pending Sync"
+    if int(record.views or 0) <= 0:
+        return "Needs Verification"
+    return "Synced"
+
+
 def _compute_growth_metrics(records: list[ViewRecord], days: int):
     if not records:
         return {
@@ -99,7 +118,9 @@ def _build_video_summaries(videos: list[Video], all_records: list[ViewRecord]):
                 "title": v.title,
                 "url": v.url,
                 "thumbnail": v.thumbnail,
-                "current_views": 0,
+                "platform": _platform_label(v.url),
+                "status": "Pending Sync",
+                "current_views": None,
                 "growth_7d": 0,
                 "growth_7d_pct": 0.0,
                 "growth_30d": 0,
@@ -122,7 +143,9 @@ def _build_video_summaries(videos: list[Video], all_records: list[ViewRecord]):
             "title": v.title,
             "url": v.url,
             "thumbnail": v.thumbnail,
-            "current_views": latest.views,
+            "platform": _platform_label(v.url),
+            "status": _record_status(latest),
+            "current_views": latest.views if latest.views > 0 else None,
             "growth_7d": m7["growth_views"],
             "growth_7d_pct": m7["growth_pct"],
             "growth_30d": m30["growth_views"],
@@ -135,6 +158,30 @@ def _build_video_summaries(videos: list[Video], all_records: list[ViewRecord]):
         })
 
     return summaries
+
+
+def _build_current_rows(videos: list[Video], all_records: list[ViewRecord]):
+    records_by_video = defaultdict(list)
+    for r in all_records:
+        records_by_video[r.video_id].append(r)
+
+    rows = []
+    for v in videos:
+        records = records_by_video.get(v.id, [])
+        latest = max(records, key=lambda r: r.date) if records else None
+        rows.append({
+            "date": latest.date if latest else "",
+            "title": v.title,
+            "url": v.url,
+            "thumbnail": v.thumbnail,
+            "platform": _platform_label(v.url),
+            "views": latest.views if latest and latest.views > 0 else None,
+            "growth": latest.growth if latest else 0,
+            "status": _record_status(latest),
+        })
+
+    rows.sort(key=lambda x: (x["status"] == "Synced", x["date"]), reverse=True)
+    return rows
 
 
 def get_export_data(db: Session, current_user: User, days: int):
@@ -226,8 +273,8 @@ def get_analytics_overview(
             "views_today": 0,
             "highest_video": None,
             "trends": [],
-            "table_data": [],
-            "video_summaries": [],
+            "table_data": _build_current_rows(videos, []),
+            "video_summaries": _build_video_summaries(videos, []),
         }
 
     latest_records = {}
@@ -275,21 +322,7 @@ def get_analytics_overview(
         key=lambda x: x["date"],
     )
 
-    table_data = []
-    for v in videos:
-        records = [r for r in all_records if r.video_id == v.id]
-        for r in records:
-            table_data.append({
-                "date": r.date,
-                "title": v.title,
-                "url": v.url,
-                "thumbnail": v.thumbnail,
-                "views": r.views,
-                "growth": r.growth,
-                "status": "Synced",
-            })
-
-    table_data.sort(key=lambda x: x["date"], reverse=True)
+    table_data = _build_current_rows(videos, full_records if full_records else all_records)
 
     return {
         "total_videos": len(videos),
@@ -297,7 +330,7 @@ def get_analytics_overview(
         "views_today": views_today,
         "highest_video": highest_video,
         "trends": trends,
-        "table_data": table_data[:100],
+        "table_data": table_data,
         "video_summaries": _build_video_summaries(videos, full_records if full_records else all_records),
     }
 

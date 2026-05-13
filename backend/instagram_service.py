@@ -1,11 +1,15 @@
 import re
 import os
+import time
 from urllib.parse import urlparse
 
 try:
     import instaloader
 except Exception:
     instaloader = None
+
+_CACHED_LOADER = None
+_LOGIN_ATTEMPTED = False
 
 
 def instagram_feature_available() -> bool:
@@ -56,8 +60,12 @@ def extract_instagram_username(url: str) -> str | None:
 
 
 def _loader():
+    global _CACHED_LOADER, _LOGIN_ATTEMPTED
     if instaloader is None:
         return None  # type: ignore[return-value]
+    if _CACHED_LOADER is not None:
+        return _CACHED_LOADER
+
     loader = instaloader.Instaloader(
         download_pictures=False,
         download_videos=False,
@@ -68,11 +76,13 @@ def _loader():
     )
     username = os.getenv("INSTAGRAM_USERNAME", "").strip()
     password = os.getenv("INSTAGRAM_PASSWORD", "").strip()
-    if username and password:
+    if username and password and not _LOGIN_ATTEMPTED:
+        _LOGIN_ATTEMPTED = True
         try:
             loader.login(username, password)
         except Exception:
             pass
+    _CACHED_LOADER = loader
     return loader
 
 
@@ -82,10 +92,24 @@ def get_instagram_post_details(url: str) -> dict | None:
     shortcode = extract_instagram_shortcode(url)
     if not shortcode:
         return None
-    try:
-        loader = _loader()
-        post = instaloader.Post.from_shortcode(loader.context, shortcode)
-    except Exception:
+
+    delay = float(os.getenv("INSTAGRAM_FETCH_DELAY_SECONDS", "2.0") or "2.0")
+    retries = max(1, int(os.getenv("INSTAGRAM_FETCH_RETRIES", "3") or "3"))
+    last_error = None
+
+    for attempt in range(1, retries + 1):
+        try:
+            if delay > 0:
+                time.sleep(delay)
+            loader = _loader()
+            post = instaloader.Post.from_shortcode(loader.context, shortcode)
+            break
+        except Exception as exc:
+            last_error = exc
+            if attempt >= retries:
+                return None
+            time.sleep(delay * attempt if delay > 0 else attempt)
+    else:
         return None
 
     caption = (post.caption or "").strip()

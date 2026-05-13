@@ -655,6 +655,7 @@ const SuperAdminLinkManager: React.FC<{
             aggregateResult.total += 1;
             aggregateResult.skipped += 1;
           }
+          await sleep(1200);
         }
         syncResult = aggregateResult;
       } else {
@@ -709,6 +710,7 @@ const SuperAdminLinkManager: React.FC<{
             aggregateResult.total += batch.length;
             aggregateResult.skipped += batch.length;
           }
+          await sleep(1200);
         }
 
         syncResult = aggregateResult;
@@ -1696,6 +1698,23 @@ const CompanyReports: React.FC = () => {
     r.url.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const formatViews = (value: any) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n.toLocaleString() : 'Pending';
+  };
+
+  const statusClass = (status: string) => {
+    if (status === 'Synced') return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+    if (status === 'Needs Verification') return 'bg-amber-500/10 text-amber-300 border-amber-500/20';
+    return 'bg-white/5 text-white/50 border-white/10';
+  };
+
+  const platformClass = (platform: string) => {
+    if (platform === 'Instagram') return 'bg-pink-500/10 text-pink-300 border-pink-500/20';
+    if (platform === 'Facebook') return 'bg-blue-500/10 text-blue-300 border-blue-500/20';
+    return 'bg-red-500/10 text-red-300 border-red-500/20';
+  };
+
   const [exporting, setExporting] = useState<string | null>(null);
 
   const handleExport = async (type: string) => {
@@ -1812,66 +1831,85 @@ const CompanyReports: React.FC = () => {
 
               <div className="bg-white/[0.02] border border-white/10 rounded-3xl overflow-hidden mb-9">
                 <div className="px-8 py-6 flex items-center justify-between border-b border-white/10">
-                  <div className="font-semibold">Growth Summary (7D / 30D / 1Y) <span className="font-normal text-white/40">({filteredSummaries.length} items)</span></div>
-                  <div className="text-xs uppercase tracking-[1px] text-white/40">ROLLING WINDOW ANALYTICS</div>
+                  <div>
+                    <div className="font-semibold">Performance Summary <span className="font-normal text-white/40">({filteredSummaries.length} items)</span></div>
+                    <div className="text-xs text-white/45 mt-1">Current verified views with 7D, 30D and 1Y growth windows</div>
+                  </div>
+                  <div className="text-xs uppercase tracking-[1px] text-white/40">LATEST SNAPSHOT</div>
                 </div>
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-white/10 text-xs text-white/50 tracking-widest">
-                      <th className="text-left py-4 pl-8">VIDEO / REEL</th>
-                      <th className="text-right pr-4">CURRENT</th>
-                      <th className="text-right pr-4">7D</th>
-                      <th className="text-right pr-4">30D</th>
-                      <th className="text-right pr-8">1Y</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-sm divide-y divide-white/10">
-                    {filteredSummaries.length > 0 ? filteredSummaries.map((row: any, index: number) => (
-                      <tr key={index} className="hover:bg-white/[0.02] transition">
-                        <td className="pl-8 py-4">
-                          <div className="flex items-center gap-4">
-                            <img src={row.thumbnail} alt="" className="w-9 h-[52px] object-cover rounded-xl" />
-                            <div className="font-medium pr-4 max-w-[320px] line-clamp-1">{row.title}</div>
-                          </div>
-                        </td>
-                        <td className="text-right font-mono pr-4 tabular-nums font-medium">{(row.current_views || 0).toLocaleString()}</td>
-                        <td className="text-right pr-4">
-                          <div className={`${(row.growth_7d || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-mono tabular-nums`}>
-                            {(row.growth_7d || 0) >= 0 ? '+' : ''}{(row.growth_7d || 0).toLocaleString()}
-                          </div>
-                          <div className="text-[11px] text-white/50">{(row.growth_7d_pct || 0)}%</div>
-                        </td>
-                        <td className="text-right pr-4">
-                          <div className={`${(row.growth_30d || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-mono tabular-nums`}>
-                            {(row.growth_30d || 0) >= 0 ? '+' : ''}{(row.growth_30d || 0).toLocaleString()}
-                          </div>
-                          <div className="text-[11px] text-white/50">{(row.growth_30d_pct || 0)}%</div>
-                        </td>
-                        <td className="text-right pr-8">
-                          <div className={`${(row.growth_365d || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-mono tabular-nums`}>
-                            {(row.growth_365d || 0) >= 0 ? '+' : ''}{(row.growth_365d || 0).toLocaleString()}
-                          </div>
-                          <div className="text-[11px] text-white/50">{(row.growth_365d_pct || 0)}%</div>
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[940px]">
+                    <thead>
+                      <tr className="border-b border-white/10 text-xs text-white/50 tracking-widest">
+                        <th className="text-left py-4 pl-8">CONTENT</th>
+                        <th className="text-left">PLATFORM</th>
+                        <th className="text-left">STATUS</th>
+                        <th className="text-right pr-4">CURRENT</th>
+                        <th className="text-right pr-4">7D</th>
+                        <th className="text-right pr-4">30D</th>
+                        <th className="text-right pr-8">1Y</th>
                       </tr>
-                    )) : (
-                      <tr><td colSpan={5} className="text-center py-16 text-white/50">No summary data yet. Add and sync videos/reels first.</td></tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="text-sm divide-y divide-white/10">
+                      {filteredSummaries.length > 0 ? filteredSummaries.map((row: any, index: number) => (
+                        <tr key={index} className="hover:bg-white/[0.02] transition">
+                          <td className="pl-8 py-4">
+                            <div className="flex items-center gap-4">
+                              <img src={row.thumbnail} alt="" className="w-9 h-[52px] object-cover rounded-xl" />
+                              <div className="min-w-0">
+                                <div className="font-medium pr-4 max-w-[320px] line-clamp-1">{row.title}</div>
+                                <a href={row.url} target="_blank" className="text-xs text-[#FF0033] inline-flex items-center gap-1 mt-1">
+                                  Open Link <ExternalLink className="w-3 h-3" />
+                                </a>
+                              </div>
+                            </div>
+                          </td>
+                          <td><span className={`px-2.5 py-1 rounded-full border text-xs ${platformClass(row.platform)}`}>{row.platform || 'Social'}</span></td>
+                          <td><span className={`px-2.5 py-1 rounded-full border text-xs ${statusClass(row.status)}`}>{row.status || 'Pending Sync'}</span></td>
+                          <td className="text-right font-mono pr-4 tabular-nums font-medium">{formatViews(row.current_views)}</td>
+                          <td className="text-right pr-4">
+                            <div className={`${(row.growth_7d || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-mono tabular-nums`}>
+                              {(row.growth_7d || 0) >= 0 ? '+' : ''}{(row.growth_7d || 0).toLocaleString()}
+                            </div>
+                            <div className="text-[11px] text-white/50">{(row.growth_7d_pct || 0)}%</div>
+                          </td>
+                          <td className="text-right pr-4">
+                            <div className={`${(row.growth_30d || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-mono tabular-nums`}>
+                              {(row.growth_30d || 0) >= 0 ? '+' : ''}{(row.growth_30d || 0).toLocaleString()}
+                            </div>
+                            <div className="text-[11px] text-white/50">{(row.growth_30d_pct || 0)}%</div>
+                          </td>
+                          <td className="text-right pr-8">
+                            <div className={`${(row.growth_365d || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-mono tabular-nums`}>
+                              {(row.growth_365d || 0) >= 0 ? '+' : ''}{(row.growth_365d || 0).toLocaleString()}
+                            </div>
+                            <div className="text-[11px] text-white/50">{(row.growth_365d_pct || 0)}%</div>
+                          </td>
+                        </tr>
+                      )) : (
+                        <tr><td colSpan={7} className="text-center py-16 text-white/50">No summary data yet. Add and sync videos/reels first.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               <div className="bg-white/[0.02] border border-white/10 rounded-3xl overflow-hidden">
                 <div className="px-8 py-6 flex items-center justify-between border-b border-white/10">
-                  <div className="font-semibold">Detailed View Records <span className="font-normal text-white/40">({filteredTable.length} entries)</span></div>
-                  <div className="text-xs uppercase tracking-[1px] text-white/40">LAST UPDATED • LIVE</div>
+                  <div>
+                    <div className="font-semibold">Tracked Content Records <span className="font-normal text-white/40">({filteredTable.length} items)</span></div>
+                    <div className="text-xs text-white/45 mt-1">Every added reel/video with verified views, platform and direct URL</div>
+                  </div>
+                  <div className="text-xs uppercase tracking-[1px] text-white/40">LAST VERIFIED</div>
                 </div>
                 
-                <table className="w-full">
+                <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px]">
                   <thead>
                     <tr className="border-b border-white/10 text-xs text-white/50 tracking-widest">
-                      <th className="text-left py-4 pl-8">DATE</th>
-                      <th className="text-left">VIDEO</th>
+                      <th className="text-left py-4 pl-8">LAST SYNC</th>
+                      <th className="text-left">CONTENT</th>
+                      <th className="text-left">PLATFORM</th>
                       <th className="text-left">LINK</th>
                       <th className="text-right pr-4">VIEWS</th>
                       <th className="text-right pr-4">DAILY GROWTH</th>
@@ -1881,23 +1919,34 @@ const CompanyReports: React.FC = () => {
                   <tbody className="text-sm divide-y divide-white/10">
                     {filteredTable.length > 0 ? filteredTable.map((row: any, index: number) => (
                       <tr key={index} className="hover:bg-white/[0.02] transition">
-                        <td className="pl-8 py-4 font-mono text-xs text-white/70">{formatDate(row.date)}</td>
+                        <td className="pl-8 py-4 font-mono text-xs text-white/70">{row.date ? formatDate(row.date) : 'Pending'}</td>
                         <td className="py-4">
                           <div className="flex items-center gap-4">
                             <img src={row.thumbnail} alt="" className="w-9 h-[52px] object-cover rounded-xl" />
                             <div className="font-medium pr-4 max-w-[240px] line-clamp-1">{row.title}</div>
                           </div>
                         </td>
-                        <td className="py-4 text-[#FF0033] text-xs font-mono truncate max-w-[190px]"><a href={row.url} target="_blank" className="hover:underline">{row.url}</a></td>
-                        <td className="text-right font-mono pr-4 tabular-nums font-medium">{row.views.toLocaleString()}</td>
-                        <td className="text-right pr-4"><span className="text-emerald-400">+{row.growth}%</span></td>
-                        <td className="text-right pr-8"><span className="px-3 py-px bg-emerald-500/10 text-emerald-400 rounded text-xs font-medium">{row.status}</span></td>
+                        <td><span className={`px-2.5 py-1 rounded-full border text-xs ${platformClass(row.platform)}`}>{row.platform || 'Social'}</span></td>
+                        <td className="py-4 text-[#FF0033] text-xs font-mono max-w-[260px]">
+                          <a href={row.url} target="_blank" className="hover:underline inline-flex items-center gap-1 max-w-full">
+                            <span className="truncate">{row.url}</span>
+                            <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                          </a>
+                        </td>
+                        <td className="text-right font-mono pr-4 tabular-nums font-medium">{formatViews(row.views)}</td>
+                        <td className="text-right pr-4">
+                          <span className={`${(row.growth || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {(row.growth || 0) >= 0 ? '+' : ''}{row.growth || 0}%
+                          </span>
+                        </td>
+                        <td className="text-right pr-8"><span className={`px-3 py-px rounded border text-xs font-medium ${statusClass(row.status)}`}>{row.status}</span></td>
                       </tr>
                     )) : (
-                      <tr><td colSpan={6} className="text-center py-16 text-white/50">No tracked data. Add videos and click Push on the Dashboard.</td></tr>
+                      <tr><td colSpan={7} className="text-center py-16 text-white/50">No tracked data. Add videos and click Push on the Dashboard.</td></tr>
                     )}
                   </tbody>
                 </table>
+                </div>
               </div>
             </>
           )}
