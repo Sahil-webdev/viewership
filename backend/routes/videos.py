@@ -337,7 +337,13 @@ def track_views(
             continue
 
         if not details:
-            errors.append(f"Failed to fetch data for video: {video.url}")
+            if platform == "instagram":
+                errors.append(
+                    f"Failed to fetch Instagram views for: {video.url}. "
+                    "Make sure reel is public and configure Meta API or Instagram session/cookies on server."
+                )
+            else:
+                errors.append(f"Failed to fetch data for video: {video.url}")
             skipped_count += 1
             continue
 
