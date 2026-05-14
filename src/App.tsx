@@ -638,8 +638,21 @@ const SuperAdminLinkManager: React.FC<{
         tracked: 0,
         skipped: 0,
         total: 0,
+        alreadyTracked: 0,
         warnings: [] as string[],
         errors: [] as string[],
+      };
+
+      const normalizeUrl = (raw: string) => {
+        try {
+          const u = new URL(raw.trim());
+          const host = u.hostname.toLowerCase().replace(/^m\./, "www.");
+          const parts = u.pathname.split("/").filter(Boolean);
+          const normalizedPath = parts.length ? `/${parts.join("/")}/` : "/";
+          return `${host}${normalizedPath}`.toLowerCase();
+        } catch {
+          return raw.trim().toLowerCase();
+        }
       };
 
       if (urls.length === 0) {
@@ -706,9 +719,39 @@ const SuperAdminLinkManager: React.FC<{
               }
             }
           } catch (batchErr: any) {
-            aggregateResult.errors.push(batchErr?.message || `Failed while processing batch ending at ${processed}`);
-            aggregateResult.total += batch.length;
-            aggregateResult.skipped += batch.length;
+            const errMsg = String(batchErr?.message || "");
+            const isAlreadyTrackedOnly = errMsg.toLowerCase().includes("no valid new social video urls to add");
+
+            if (isAlreadyTrackedOnly && inputMode === "item") {
+              const batchSet = new Set(batch.map((u) => normalizeUrl(u)));
+              const existingIds = managedVideos
+                .filter((v) => batchSet.has(normalizeUrl(v.url)))
+                .map((v) => v.id)
+                .filter(Boolean);
+
+              if (existingIds.length > 0) {
+                aggregateResult.alreadyTracked += existingIds.length;
+                for (const existingId of existingIds) {
+                  setTrackingMessage(`SYNCING EXISTING CONTENT (${processed}/${urls.length})...`);
+                  try {
+                    const partial = await withRetry(() => api.trackViewsForCompany(selectedCompanyId, [existingId]));
+                    mergeSyncResult(aggregateResult, partial);
+                  } catch (syncErr: any) {
+                    aggregateResult.errors.push(syncErr?.message || `Failed syncing existing item (${processed}/${urls.length})`);
+                    aggregateResult.total += 1;
+                    aggregateResult.skipped += 1;
+                  }
+                }
+              } else {
+                aggregateResult.errors.push(errMsg || `Failed while processing batch ending at ${processed}`);
+                aggregateResult.total += batch.length;
+                aggregateResult.skipped += batch.length;
+              }
+            } else {
+              aggregateResult.errors.push(errMsg || `Failed while processing batch ending at ${processed}`);
+              aggregateResult.total += batch.length;
+              aggregateResult.skipped += batch.length;
+            }
           }
           await sleep(1200);
         }
@@ -723,16 +766,17 @@ const SuperAdminLinkManager: React.FC<{
       const tracked = Number(syncResult?.tracked ?? 0);
       const skipped = Number(syncResult?.skipped ?? 0);
       const total = Number(syncResult?.total ?? tracked + skipped);
+      const alreadyTracked = Number(syncResult?.alreadyTracked ?? 0);
       const firstWarning = syncResult?.warnings?.[0] || syncResult?.errors?.[0];
       const hasAccuracyWarning = skipped > 0 || Boolean(firstWarning);
       setToast({
         message: total === 0
           ? 'No new trackable items were processed. Check links or try again.'
           : hasAccuracyWarning
-          ? `Sync completed: ${tracked}/${total} updated, ${skipped} skipped for accuracy. ${firstWarning ? `Note: ${firstWarning}` : ''}`
+          ? `Sync completed: ${tracked}/${total} updated, ${skipped} skipped for accuracy${alreadyTracked > 0 ? `, ${alreadyTracked} already tracked` : ''}. ${firstWarning ? `Note: ${firstWarning}` : ''}`
           : (urls.length === 0
             ? `Tracked content synced for ${selectedCompany?.companyName || 'selected company'}`
-            : `Sync completed for ${selectedCompany?.companyName || 'selected company'} (${tracked}/${total} updated)`),
+            : `Sync completed for ${selectedCompany?.companyName || 'selected company'} (${tracked}/${total} updated${alreadyTracked > 0 ? `, ${alreadyTracked} already tracked` : ''})`),
         type: total === 0 ? 'info' : (hasAccuracyWarning ? 'info' : 'success'),
       });
       setTimeout(() => setShowSuccess(false), 1400);
