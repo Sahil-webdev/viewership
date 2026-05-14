@@ -3,6 +3,7 @@ import re
 import httpx
 from urllib.parse import urlparse, parse_qs
 from typing import Optional
+from time import time
 
 META_API_VERSION = "v21.0"
 META_GRAPH_URL = f"https://graph.facebook.com/{META_API_VERSION}"
@@ -14,6 +15,7 @@ _APP_SECRET: Optional[str] = None
 _BUSINESS_USERNAME: Optional[str] = None
 _PAGE_TOKEN: Optional[str] = None
 _PAGE_ID: Optional[str] = None
+_DISCOVERY_CACHE: dict[str, tuple[float, dict[str, dict]]] = {}
 
 
 def configure(app_id: str, app_secret: str, access_token: str, business_id: str):
@@ -140,23 +142,73 @@ def _get_business_username() -> Optional[str]:
     return _BUSINESS_USERNAME
 
 
-def _get_media_with_views_via_business_discovery() -> dict[str, dict]:
-    username = _get_business_username()
+def _to_app_access_token() -> Optional[str]:
+    if _APP_ID and _APP_SECRET:
+        return f"{_APP_ID}|{_APP_SECRET}"
+    return None
+
+
+def _get_oembed_author_username(post_url: str) -> Optional[str]:
+    app_token = _to_app_access_token()
+    if not app_token:
+        return None
+    try:
+        with httpx.Client(timeout=15) as client:
+            r = client.get(
+                f"{META_GRAPH_URL}/instagram_oembed",
+                params={"url": post_url, "access_token": app_token},
+            )
+            if r.status_code != 200:
+                return None
+            data = r.json()
+    except Exception:
+        return None
+
+    author_url = (data.get("author_url") or "").strip()
+    if author_url:
+        parsed = urlparse(author_url)
+        parts = [p for p in parsed.path.split("/") if p]
+        if parts:
+            return parts[0].lstrip("@")
+
+    author_name = (data.get("author_name") or "").strip()
+    if not author_name:
+        return None
+    candidate = author_name.lstrip("@")
+    if " " in candidate:
+        return None
+    return candidate
+
+
+def _get_media_with_views_via_business_discovery(username: Optional[str] = None) -> dict[str, dict]:
+    username = (username or _get_business_username() or "").strip()
     if not username:
         return {}
-    fields = "business_discovery.username(" + username + "){media.limit(100){id,media_type,permalink,like_count,comments_count,view_count,timestamp,caption}}"
+    cache_key = username.lower()
+    now = time()
+    cached = _DISCOVERY_CACHE.get(cache_key)
+    if cached and (now - cached[0] < 300):
+        return cached[1]
+
+    fields = (
+        "business_discovery.username("
+        + username
+        + "){media.limit(100){id,media_type,permalink,like_count,comments_count,view_count,timestamp,caption}}"
+    )
     data = _meta_get(f"/{_BUSINESS_ID}", {"fields": fields})
     if not data:
         return {}
     bd = data.get("business_discovery", {})
     media_list = bd.get("media", {}).get("data", [])
-    cache = {}
+    result: dict[str, dict] = {}
     for item in media_list:
         permalink = item.get("permalink", "")
         sc = extract_instagram_shortcode(permalink)
         if sc:
-            cache[sc] = item
-    return cache
+            result[sc] = item
+
+    _DISCOVERY_CACHE[cache_key] = (now, result)
+    return result
 
 
 def get_instagram_post_details(url: str) -> Optional[dict]:
@@ -167,6 +219,11 @@ def get_instagram_post_details(url: str) -> Optional[dict]:
         return None
     cache = _get_media_with_views_via_business_discovery()
     item = cache.get(shortcode)
+    if not item:
+        author_username = _get_oembed_author_username(url)
+        if author_username:
+            author_cache = _get_media_with_views_via_business_discovery(author_username)
+            item = author_cache.get(shortcode)
     if not item:
         return None
     views = int(item.get("view_count", 0) or 0)
