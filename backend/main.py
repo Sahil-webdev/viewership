@@ -8,6 +8,7 @@ from routes.videos import router as videos_router
 from routes.analytics import router as analytics_router
 from meta_service import configure as meta_configure
 from meta_service import configure_facebook as meta_configure_facebook
+from scheduler import start_scheduler
 
 Base.metadata.create_all(bind=engine)
 
@@ -45,6 +46,8 @@ app = FastAPI(
     description="YouTube View Tracker - Real Backend",
     version="1.0.0",
 )
+
+start_scheduler()
 
 cors_origins_raw = os.getenv("CORS_ORIGINS", "*")
 if cors_origins_raw.strip() == "*":

@@ -10,6 +10,11 @@ try:
 except Exception:
     instaloader = None
 
+try:
+    import yt_dlp
+except Exception:
+    yt_dlp = None
+
 _CACHED_LOADER = None
 _LOGIN_ATTEMPTED = False
 
@@ -120,11 +125,54 @@ def _instaloader_post_details(url: str) -> dict | None:
     }
 
 
+def _ytdlp_instagram_post_details(url: str) -> dict | None:
+    if yt_dlp is None:
+        return None
+    shortcode = extract_instagram_shortcode(url)
+    if not shortcode:
+        return None
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "extract_flat": False,
+    }
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception:
+        return None
+
+    if not info or not isinstance(info, dict):
+        return None
+
+    canonical = info.get("webpage_url") or info.get("original_url") or url
+    title = (info.get("title") or "Instagram Reel").strip()[:90]
+    thumbnail = info.get("thumbnail") or ""
+    views = int(info.get("view_count") or 0)
+
+    return {
+        "shortcode": shortcode,
+        "url": canonical,
+        "title": title,
+        "thumbnail": thumbnail,
+        "views": views,
+        "likes": int(info.get("like_count") or 0),
+        "comments": int(info.get("comment_count") or 0),
+        "published_at": info.get("timestamp") or "",
+        "is_video": True,
+    }
+
+
 def get_instagram_post_details(url: str) -> dict | None:
     if meta_service.is_configured():
         result = meta_service.get_instagram_post_details(url)
-        if result:
+        if result and int(result.get("views", 0)) > 0:
             return result
+
+    ytdlp_result = _ytdlp_instagram_post_details(url)
+    if ytdlp_result and int(ytdlp_result.get("views", 0)) > 0:
+        return ytdlp_result
 
     if instaloader is not None:
         return _instaloader_post_details(url)

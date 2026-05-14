@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'r
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Users, TrendingUp, Video, Calendar, ArrowRight, Plus, Trash2, Edit2, 
-  Download, Search, X, Play, ExternalLink, Instagram, MoreHorizontal, Eye, EyeOff, Copy
+  Download, Search, X, Play, ExternalLink, Instagram, MoreHorizontal, Eye, EyeOff, Copy, RefreshCw
 } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { api, API_BASE } from './services/api';
@@ -1716,6 +1716,35 @@ const CompanyReports: React.FC = () => {
   };
 
   const [exporting, setExporting] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setToast({ message: 'Refreshing live view counts...', type: 'info' });
+    try {
+      await api.trackViews();
+      const days = parseInt(dateFilter);
+      const data = await api.getAnalytics(days);
+      setAnalytics(data);
+      setToast({ message: 'View counts refreshed successfully', type: 'success' });
+    } catch (err: any) {
+      setToast({ message: err.message || 'Refresh failed', type: 'error' });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const days = parseInt(dateFilter);
+        const data = await api.getAnalytics(days);
+        setAnalytics(data);
+      } catch {}
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [dateFilter]);
 
   const handleExport = async (type: string) => {
     const days = parseInt(dateFilter);
@@ -1790,6 +1819,7 @@ const CompanyReports: React.FC = () => {
             </div>
 
             <div className="flex gap-3">
+              <button onClick={handleRefresh} disabled={refreshing} className="px-5 py-3 flex gap-2 text-sm items-center bg-emerald-600/20 border border-emerald-500/30 hover:bg-emerald-600/30 text-emerald-300 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed"><RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} /> {refreshing ? 'Refreshing...' : 'Refresh Now'}</button>
               <button onClick={() => handleExport('CSV')} disabled={exporting !== null} className="px-5 py-3 flex gap-2 text-sm items-center border border-white/20 rounded-2xl hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"><Download className="w-4 h-4" /> {exporting === 'CSV' ? 'Generating...' : 'Export CSV'}</button>
               <button onClick={() => handleExport('Excel')} disabled={exporting !== null} className="px-5 py-3 flex gap-2 text-sm items-center border border-white/20 rounded-2xl hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"><Download className="w-4 h-4" /> {exporting === 'Excel' ? 'Generating...' : 'Export Excel'}</button>
               <button onClick={() => handleExport('PDF')} disabled={exporting !== null} className="px-5 py-3 flex gap-2 text-sm items-center border border-white/20 rounded-2xl hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"><Download className="w-4 h-4" /> {exporting === 'PDF' ? 'Generating...' : 'Export PDF'}</button>
